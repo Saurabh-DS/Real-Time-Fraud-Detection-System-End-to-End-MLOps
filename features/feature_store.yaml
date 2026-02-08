@@ -1,0 +1,18 @@
+# Feast Feature Store Configuration
+# ==================================
+# Configures the registry, online store (Redis), and offline store for feature management.
+
+project: fraud_detection
+registry: data/registry.db
+provider: local
+
+online_store:
+  # Redis for low-latency feature retrieval during inference
+  type: redis
+  connection_string: "redis://localhost:6379"
+
+offline_store:
+  # Parquet files for historical feature storage
+  type: file
+
+entity_key_serialization_version: 2

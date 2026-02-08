@@ -1,0 +1,26 @@
+# Kind Cluster Configuration (Simple)
+# ===================================
+# Single-node configuration for Windows Docker Desktop
+# Use full 3-node config on Linux/Mac for production-like setup
+
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+
+name: fraud-detection
+
+nodes:
+  # Single node with control-plane + worker capabilities
+  - role: control-plane
+    extraPortMappings:
+      # Fraud API
+      - containerPort: 30000
+        hostPort: 30000
+        protocol: TCP
+      # Grafana
+      - containerPort: 30001
+        hostPort: 30001
+        protocol: TCP
+      # MLflow
+      - containerPort: 30002
+        hostPort: 30002
+        protocol: TCP

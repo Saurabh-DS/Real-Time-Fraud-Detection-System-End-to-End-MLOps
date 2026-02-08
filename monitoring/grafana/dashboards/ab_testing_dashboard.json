@@ -1,0 +1,251 @@
+{
+    "annotations": {
+        "list": []
+    },
+    "title": "A/B Testing Dashboard",
+    "uid": "ab-testing-dashboard",
+    "version": 1,
+    "panels": [
+        {
+            "gridPos": {
+                "h": 4,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 1,
+            "title": "A/B Testing Overview",
+            "type": "text",
+            "options": {
+                "content": "## Fraud Model A/B Experiment\n\nThis dashboard tracks the performance comparison between Control (current production model) and Treatment (challenger model).\n\n**Key Metrics:**\n- Traffic Split\n- Fraud Detection Rate by Variant\n- Latency Comparison\n- Agreement Rate",
+                "mode": "markdown"
+            }
+        },
+        {
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 0,
+                "y": 4
+            },
+            "id": 2,
+            "title": "Traffic Split",
+            "type": "piechart",
+            "targets": [
+                {
+                    "expr": "sum by (variant) (ab_experiment_assignments_total)",
+                    "legendFormat": "{{variant}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "custom": {}
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 8,
+                "y": 4
+            },
+            "id": 3,
+            "title": "Control Assignments",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(ab_experiment_assignments_total{variant=\"control\"})",
+                    "legendFormat": "Control"
+                }
+            ],
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "short"
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 6,
+                "w": 8,
+                "x": 16,
+                "y": 4
+            },
+            "id": 4,
+            "title": "Treatment Assignments",
+            "type": "stat",
+            "targets": [
+                {
+                    "expr": "sum(ab_experiment_assignments_total{variant=\"treatment\"})",
+                    "legendFormat": "Treatment"
+                }
+            ],
+            "options": {
+                "colorMode": "value",
+                "graphMode": "area"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "unit": "short"
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 10
+            },
+            "id": 5,
+            "title": "Fraud Rate by Variant",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum(rate(ab_variant_predictions_total{prediction=\"fraud\"}[5m])) by (variant) / sum(rate(ab_variant_predictions_total[5m])) by (variant)",
+                    "legendFormat": "{{variant}} fraud rate"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "percentunit",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2,
+                        "fillOpacity": 10
+                    }
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 10
+            },
+            "id": 6,
+            "title": "Predictions by Variant",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "sum(rate(ab_variant_predictions_total[5m])) by (variant, prediction)",
+                    "legendFormat": "{{variant}} - {{prediction}}"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "reqps",
+                    "custom": {
+                        "drawStyle": "bars",
+                        "fillOpacity": 80
+                    }
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 0,
+                "y": 18
+            },
+            "id": 7,
+            "title": "Latency P50 by Variant",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.5, sum(rate(ab_variant_latency_seconds_bucket[5m])) by (le, variant))",
+                    "legendFormat": "{{variant}} P50"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2
+                    }
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 8,
+                "w": 12,
+                "x": 12,
+                "y": 18
+            },
+            "id": 8,
+            "title": "Latency P95 by Variant",
+            "type": "timeseries",
+            "targets": [
+                {
+                    "expr": "histogram_quantile(0.95, sum(rate(ab_variant_latency_seconds_bucket[5m])) by (le, variant))",
+                    "legendFormat": "{{variant}} P95"
+                }
+            ],
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "s",
+                    "custom": {
+                        "drawStyle": "line",
+                        "lineWidth": 2
+                    }
+                }
+            }
+        },
+        {
+            "gridPos": {
+                "h": 6,
+                "w": 24,
+                "x": 0,
+                "y": 26
+            },
+            "id": 9,
+            "title": "Cumulative Predictions by Variant",
+            "type": "bargauge",
+            "targets": [
+                {
+                    "expr": "sum by (variant, prediction) (ab_variant_predictions_total)",
+                    "legendFormat": "{{variant}}: {{prediction}}"
+                }
+            ],
+            "options": {
+                "orientation": "horizontal",
+                "displayMode": "gradient"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "unit": "short",
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                }
+            }
+        }
+    ],
+    "time": {
+        "from": "now-1h",
+        "to": "now"
+    },
+    "refresh": "10s",
+    "schemaVersion": 38
+}

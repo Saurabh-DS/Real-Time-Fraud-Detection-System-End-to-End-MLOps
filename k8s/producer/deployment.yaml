@@ -1,0 +1,219 @@
+# Transaction Producer - Kubernetes Deployment
+# =============================================
+# Generates simulated transactions and sends to BOTH Kafka and fraud-api
+# This enables the full streaming pipeline: producer -> kafka -> consumer -> fraud-api
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: producer
+  namespace: fraud-detection
+  labels:
+    app: producer
+    component: data-pipeline
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: producer
+  template:
+    metadata:
+      labels:
+        app: producer
+        component: data-pipeline
+    spec:
+      initContainers:
+        - name: wait-for-kafka
+          image: busybox
+          command: ['sh', '-c', 'until nc -z kafka 9092; do echo waiting for kafka; sleep 5; done; sleep 5']
+      
+      containers:
+        - name: producer
+          image: python:3.11-slim
+          command:
+            - /bin/sh
+            - -c
+            - |
+              pip install kafka-python requests faker > /dev/null 2>&1
+              python -u /app/producer.py
+          
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: KAFKA_TOPIC
+              value: "transactions"
+            - name: FRAUD_API_URL
+              value: "http://fraud-api:8000"
+            - name: TPS
+              value: "2"
+            - name: DRIFT_MODE
+              value: "true"
+          
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          
+          volumeMounts:
+            - name: producer-script
+              mountPath: /app
+      
+      volumes:
+        - name: producer-script
+          configMap:
+            name: producer-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: producer-script
+  namespace: fraud-detection
+data:
+  producer.py: |
+    """
+    Transaction Producer for Kubernetes
+    Sends to both Kafka (for streaming) and directly to fraud-api (for metrics)
+    """
+    import os
+    import json
+    import time
+    import random
+    import requests
+    from datetime import datetime
+    from faker import Faker
+    from kafka import KafkaProducer
+    from kafka.errors import NoBrokersAvailable
+    
+    fake = Faker()
+    
+    KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
+    KAFKA_TOPIC = os.getenv("KAFKA_TOPIC", "transactions")
+    FRAUD_API_URL = os.getenv("FRAUD_API_URL", "http://fraud-api:8000")
+    FRAUD_API_URL = os.getenv("FRAUD_API_URL", "http://fraud-api:8000")
+    TPS = float(os.getenv("TPS", "2"))
+    DRIFT_MODE = os.getenv("DRIFT_MODE", "false").lower() == "true"
+    
+    MERCHANT_CATEGORIES = [
+        "grocery_stores", "restaurants", "gas_stations", 
+        "electronics", "travel", "entertainment", "online_retail"
+    ]
+    
+    def create_kafka_producer():
+        """Create Kafka producer with retry logic"""
+        for attempt in range(10):
+            try:
+                producer = KafkaProducer(
+                    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS.split(','),
+                    value_serializer=lambda v: json.dumps(v).encode('utf-8'),
+                    acks='all'
+                )
+                print(f"Connected to Kafka at {KAFKA_BOOTSTRAP_SERVERS}")
+
+                return producer
+            except NoBrokersAvailable:
+                print(f"Waiting for Kafka... attempt {attempt + 1}/10")
+
+                time.sleep(5)
+        print("Kafka not available, sending directly to API only")
+
+        return None
+    
+    def generate_transaction():
+        """Generate a synthetic transaction matching API schema"""
+        is_fraud_attempt = random.random() < 0.15  # Increased fraud rate for visibility
+        
+        amount = random.uniform(10, 500)
+        
+        # DRIFT MODE: Shift distribution significantly
+        if DRIFT_MODE:
+            amount = amount * 3.0  # Shift mean amount
+            if random.random() < 0.4:
+                # Skew categorical distribution
+                return {
+                    "transaction_id": f"txn_{fake.uuid4()[:8]}",
+                    "user_id": f"user_{random.randint(1, 1000):05d}",
+                    "amount": round(amount, 2),
+                    "currency": "GBP",
+                    "merchant_id": f"merchant_{random.randint(1, 500):04d}",
+                    "merchant_name": fake.company(),
+                    "merchant_category": "electronics",  # High value category
+                    "timestamp": datetime.utcnow().isoformat() + "Z",
+                    "location_city": "London", # Geographic concentration
+                    "location_country": "GB",
+                    "card_present": False,
+                    "channel": "online",
+                    "customer_age": random.randint(18, 75)
+                }
+        
+        if is_fraud_attempt:
+            amount = random.uniform(1000, 10000)
+        
+        return {
+            "transaction_id": f"txn_{fake.uuid4()[:8]}",
+            "user_id": f"user_{random.randint(1, 1000):05d}",
+            "amount": round(amount, 2),
+            "currency": "GBP",
+            "merchant_id": f"merchant_{random.randint(1, 500):04d}",
+            "merchant_name": fake.company(),
+            "merchant_category": random.choice(MERCHANT_CATEGORIES),
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "location_city": random.choice(["London", "Manchester", "Birmingham", "Leeds", "Glasgow"]),
+            "location_country": "GB",
+            "card_present": random.choice([True, False]),
+            "channel": random.choice(["pos", "online", "mobile"]),
+            "customer_age": random.randint(18, 75),
+            "is_fraud_target": is_fraud_attempt # Internal marker for debugging
+        }
+    
+    def main():
+        print(f"Producer starting - {TPS} TPS")
+
+        if DRIFT_MODE:
+            print("DRIFT MODE ACTIVE: Generating anomalous data!")
+
+        print(f"   Kafka: {KAFKA_BOOTSTRAP_SERVERS}/{KAFKA_TOPIC}")
+        print(f"   API:   {FRAUD_API_URL}")
+        
+        kafka_producer = create_kafka_producer()
+        
+        while True:
+            try:
+                transaction = generate_transaction()
+                
+                # Send to Kafka if available
+                if kafka_producer:
+                    kafka_producer.send(KAFKA_TOPIC, transaction)
+                    kafka_producer.flush()
+                
+                # Also send directly to API for immediate metrics
+                response = requests.post(
+                    f"{FRAUD_API_URL}/predict",
+                    json=transaction,
+                    timeout=5
+                )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    prediction = result.get("prediction", "unknown")
+                    probability = result.get("probability", 0)
+                    
+                    marker = "!!" if prediction == "fraud" else ">"
+
+                    kafka_mark = "[K]" if kafka_producer else ""
+                    print(f"{marker}{kafka_mark} txn={transaction['transaction_id']} "
+                          f"${transaction['amount']:.2f} pred={prediction} prob={probability:.3f}", flush=True)
+                else:
+                    print(f"HTTP {response.status_code}")
+
+                
+            except Exception as e:
+                print(f"Error: {e}")
+
+            
+            time.sleep(1 / TPS)
+    
+    if __name__ == "__main__":
+        main()

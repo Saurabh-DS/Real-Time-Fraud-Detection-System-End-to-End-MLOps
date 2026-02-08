@@ -1,0 +1,34 @@
+apiVersion: machinelearning.seldon.io/v1
+kind: SeldonDeployment
+metadata:
+  name: fraud-detection-graph
+  namespace: fraud-detection-prod
+spec:
+  name: fraud-inference-graph
+  predictors:
+  - componentSpecs:
+    - spec:
+        containers:
+        - image: fraud-transformer:v1
+          name: transformer
+          env:
+            - name: REDIS_HOST
+              value: "redis-cluster.prod"
+        - image: fraud-xgboost-server:v1
+          name: xgboost-model
+        - image: fraud-explainer-shap:v1
+          name: explainer
+    graph:
+      name: transformer
+      type: TRANSFORMER
+      children:
+      - name: xgboost-model
+        type: MODEL
+        children: []
+      - name: explainer
+        type: MODEL
+        children: []
+    name: default
+    replicas: 3
+    annotations:
+      seldon.io/executor: "true"

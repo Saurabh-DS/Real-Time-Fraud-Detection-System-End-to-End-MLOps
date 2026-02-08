@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres
+    spec:
+      nodeSelector:
+        node-type: infra
+      containers:
+        - name: postgres
+          image: "{{ .Values.airflow.postgres.image.repository }}:{{ .Values.airflow.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: POSTGRES_USER
+              value: "{{ .Values.airflow.postgres.env.POSTGRES_USER }}"
+            - name: POSTGRES_PASSWORD
+              value: "{{ .Values.airflow.postgres.env.POSTGRES_PASSWORD }}"
+            - name: POSTGRES_DB
+              value: "{{ .Values.airflow.postgres.env.POSTGRES_DB }}"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: postgres-data
+          {{- if .Values.airflow.postgres.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+{{- if .Values.airflow.postgres.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.airflow.postgres.persistence.size }}
+---
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5432
+      targetPort: 5432
+      name: postgres
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-airflow-postgres

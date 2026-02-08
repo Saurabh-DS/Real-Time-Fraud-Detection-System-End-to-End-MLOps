@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-serving-shadow
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.servingShadow.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-serving-shadow
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-serving-shadow
+    spec:
+      containers:
+        - name: serving-shadow
+          image: "{{ .Values.servingShadow.image.repository }}:{{ .Values.servingShadow.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.servingShadow.ports.http }}
+          env:
+            - name: REDIS_HOST
+              value: "{{ include "fraud-detection-system.fullname" . }}-redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://{{ include "fraud-detection-system.fullname" . }}-mlflow:5000"
+            - name: MODEL_NAME
+              value: "{{ .Values.servingShadow.env.MODEL_NAME }}"
+          resources:
+            {{- toYaml .Values.servingShadow.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-serving-shadow
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000 # Map to standard HTTP port internally
+      targetPort: 8000
+      name: http
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-serving-shadow

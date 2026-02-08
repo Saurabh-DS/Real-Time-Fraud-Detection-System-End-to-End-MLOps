@@ -1,0 +1,43 @@
+# Fraud Detection API - Ingress
+# =============================
+# Ingress for path-based routing and rate limiting.
+
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fraud-api-ingress
+  namespace: fraud-detection
+  labels:
+    app: fraud-api
+  annotations:
+    # NGINX Ingress Controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    # Rate limiting (100 req/sec per IP)
+    nginx.ingress.kubernetes.io/limit-rps: "100"
+    nginx.ingress.kubernetes.io/limit-connections: "10"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: fraud-api.local
+      http:
+        paths:
+          # Main API
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fraud-api
+                port:
+                  number: 8000
+          # Metrics endpoint
+          - path: /metrics
+            pathType: Exact
+            backend:
+              service:
+                name: fraud-api
+                port:
+                  number: 8000

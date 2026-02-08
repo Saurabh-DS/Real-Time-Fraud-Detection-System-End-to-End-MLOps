@@ -1,0 +1,64 @@
+{{- if .Values.serving.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-serving-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fraud-detection-system.fullname" . }}-serving
+  minReplicas: {{ .Values.serving.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.serving.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.serving.autoscaling.targetCPUUtilizationPercentage }}
+---
+{{- end }}
+
+{{- if .Values.servingShadow.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-serving-shadow-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fraud-detection-system.fullname" . }}-serving-shadow
+  minReplicas: {{ .Values.servingShadow.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.servingShadow.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.servingShadow.autoscaling.targetCPUUtilizationPercentage }}
+---
+{{- end }}
+
+{{- if .Values.producer.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-producer-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fraud-detection-system.fullname" . }}-producer
+  minReplicas: {{ .Values.producer.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.producer.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.producer.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

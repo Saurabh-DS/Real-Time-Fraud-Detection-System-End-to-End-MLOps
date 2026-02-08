@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-mlflow
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-mlflow
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-mlflow
+    spec:
+      nodeSelector:
+        node-type: infra
+      containers:
+        - name: mlflow
+          image: "{{ .Values.mlflow.image.repository }}:{{ .Values.mlflow.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.mlflow.ports.http }}
+          env:
+            - name: MLFLOW_BACKEND_STORE_URI
+              value: "{{ .Values.mlflow.env.MLFLOW_BACKEND_STORE_URI }}"
+            - name: MLFLOW_DEFAULT_ARTIFACT_ROOT
+              value: "{{ .Values.mlflow.env.MLFLOW_DEFAULT_ARTIFACT_ROOT }}"
+          command:
+            - "mlflow"
+            - "server"
+            - "--host"
+            - "0.0.0.0"
+            - "--port"
+            - "5000"
+            - "--backend-store-uri"
+            - "{{ .Values.mlflow.env.MLFLOW_BACKEND_STORE_URI }}"
+            - "--default-artifact-root"
+            - "{{ .Values.mlflow.env.MLFLOW_DEFAULT_ARTIFACT_ROOT }}"
+          volumeMounts:
+            - name: mlflow-data
+              mountPath: /mlflow
+      volumes:
+        - name: mlflow-data
+          {{- if .Values.mlflow.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "fraud-detection-system.fullname" . }}-mlflow-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+{{- if .Values.mlflow.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-mlflow-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.mlflow.persistence.size }}
+---
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-mlflow
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 5000
+      targetPort: 5000
+      name: http
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-mlflow

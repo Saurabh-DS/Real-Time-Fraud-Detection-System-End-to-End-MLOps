@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-serving
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.serving.replicas }}
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-serving
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-serving
+    spec:
+      nodeSelector:
+        node-type: app
+      containers:
+        - name: serving
+          image: "{{ .Values.serving.image.repository }}:{{ .Values.serving.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.serving.ports.http }}
+          env:
+            - name: REDIS_HOST
+              value: "{{ include "fraud-detection-system.fullname" . }}-redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://{{ include "fraud-detection-system.fullname" . }}-mlflow:5000"
+            - name: MODEL_NAME
+              value: "{{ .Values.serving.env.MODEL_NAME }}"
+            - name: SHADOW_MODEL_URL
+              value: "http://{{ include "fraud-detection-system.fullname" . }}-serving-shadow:8000/predict"
+            - name: AB_TESTING_ENABLED
+              value: "{{ .Values.serving.env.AB_TESTING_ENABLED }}"
+            - name: AB_TRAFFIC_SPLIT
+              value: "{{ .Values.serving.env.AB_TRAFFIC_SPLIT }}"
+            - name: AB_EXPERIMENT_NAME
+              value: "{{ .Values.serving.env.AB_EXPERIMENT_NAME }}"
+          resources:
+            {{- toYaml .Values.serving.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-serving
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.serving.ports.http }}
+      targetPort: {{ .Values.serving.ports.http }}
+      name: http
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-serving

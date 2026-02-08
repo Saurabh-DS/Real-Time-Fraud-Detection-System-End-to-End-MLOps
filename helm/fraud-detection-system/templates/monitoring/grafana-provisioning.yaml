@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-grafana-provisioning
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+data:
+  dashboards.yml: |
+    apiVersion: 1
+    providers:
+      - name: 'Fraud Detection Dashboards'
+        orgId: 1
+        folder: ''
+        folderUid: ''
+        type: file
+        disableDeletion: false
+        updateIntervalSeconds: 10
+        allowUiUpdates: true
+        options:
+          path: /var/lib/grafana/dashboards
+
+  datasources.yml: |
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        type: prometheus
+        access: proxy
+        url: http://{{ include "fraud-detection-system.fullname" . }}-prometheus:9090
+        uid: PBFA97CFB590B2093
+        isDefault: true
+        editable: true

@@ -1,0 +1,117 @@
+# Fraud Detection API - Kubernetes Deployment
+# ============================================
+# Manages the deployment of the fraud detection serving service.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-api
+  namespace: fraud-detection
+  labels:
+    app: fraud-api
+    version: v1
+    app.kubernetes.io/name: fraud-api
+    app.kubernetes.io/component: serving
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: fraud-api
+  
+  # Rolling update strategy for zero-downtime deployments
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  
+  template:
+    metadata:
+      labels:
+        app: fraud-api
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      # Schedule on app worker nodes
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-type
+                    operator: In
+                    values:
+                      - app
+      
+      containers:
+        - name: fraud-api
+          image: fraud-serving:v6
+          imagePullPolicy: IfNotPresent
+          
+          ports:
+            - containerPort: 8000
+              name: http
+              protocol: TCP
+          
+          # Environment variables
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+            - name: MODEL_NAME
+              value: "fraud_detection_model"
+            - name: MODEL_VERSION
+              value: "primary"
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: "http://minio:9000"
+            - name: AWS_ACCESS_KEY_ID
+              value: "minioadmin"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "minioadmin"
+            - name: SHADOW_MODEL_URL
+              value: "http://fraud-api-shadow:8000/predict"
+            - name: AB_TESTING_ENABLED
+              value: "true"
+            - name: AB_TRAFFIC_SPLIT
+              value: "0.2"
+            - name: AB_EXPERIMENT_NAME
+              value: "fraud_model_v2_test"
+          
+          # Resource requests and limits
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          
+          # Liveness probe - restart if unhealthy
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          
+          # Readiness probe - don't route traffic until ready
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+      
+      # Graceful shutdown
+      terminationGracePeriodSeconds: 30

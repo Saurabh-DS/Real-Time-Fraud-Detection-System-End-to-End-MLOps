@@ -1,0 +1,210 @@
+# Default values for fraud-detection-system.
+
+global:
+  imagePullPolicy: IfNotPresent
+
+# ============================================================================
+# MESSAGING LAYER
+# ============================================================================
+zookeeper:
+  image:
+    repository: confluentinc/cp-zookeeper
+    tag: 7.8.0
+  ports:
+    client: 2181
+  env:
+    ZOOKEEPER_CLIENT_PORT: 2181
+    ZOOKEEPER_TICK_TIME: 2000
+
+kafka:
+  image:
+    repository: confluentinc/cp-kafka
+    tag: 7.8.0
+  replicas: 1
+  ports:
+    containerPort: 9092
+    internalPort: 29092
+  env:
+    KAFKA_BROKER_ID: 1
+    KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+    KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+    KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+
+# ============================================================================
+# FEATURE STORE
+# ============================================================================
+redis:
+  image:
+    repository: redis
+    tag: 8-alpine
+  ports:
+    redis: 6379
+  persistence:
+    enabled: true
+    size: 1Gi
+
+minio:
+  image:
+    repository: minio/minio
+    tag: latest
+  ports:
+    api: 9000
+    console: 9001
+  persistence:
+    enabled: true
+    size: 2Gi
+  env:
+    MINIO_ROOT_USER: minioadmin
+    MINIO_ROOT_PASSWORD: minioadmin123
+
+# ============================================================================
+# ML PLATFORM
+# ============================================================================
+mlflow:
+  image:
+    repository: ghcr.io/mlflow/mlflow
+    tag: v3.0.0
+  ports:
+    http: 5000
+  persistence:
+    enabled: true
+    size: 1Gi
+  env:
+    MLFLOW_BACKEND_STORE_URI: sqlite:///mlflow.db
+    MLFLOW_DEFAULT_ARTIFACT_ROOT: /mlflow/artifacts
+  
+# ============================================================================
+# MONITORING
+# ============================================================================
+prometheus:
+  image:
+    repository: prom/prometheus
+    tag: v3.1.0
+  ports:
+    http: 9090
+
+grafana:
+  image:
+    repository: grafana/grafana
+    tag: 11.4.0
+  ports:
+    http: 3000
+  env:
+    GF_SECURITY_ADMIN_USER: admin
+    GF_SECURITY_ADMIN_PASSWORD: admin
+    GF_USERS_ALLOW_SIGN_UP: false
+
+# ============================================================================
+# APPLICATION SERVICES
+# ============================================================================
+producer:
+  image:
+    repository: fraud-producer
+    tag: v3
+  env:
+    KAFKA_TOPIC: transaction_stream
+    TRANSACTIONS_PER_SECOND: 10
+    FRAUD_RATIO: 0.02
+    DEMO_MODE: "true"
+  resources:
+    limits:
+      cpu: 200m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 3
+    targetCPUUtilizationPercentage: 80
+
+serving:
+  image:
+    repository: fraud-serving
+    tag: latest
+  replicas: 1
+  ports:
+    http: 8000
+  env:
+    MODEL_NAME: fraud_detection_model
+    AB_TESTING_ENABLED: "true"
+    AB_TRAFFIC_SPLIT: "0.2"
+    AB_EXPERIMENT_NAME: "fraud_model_v2_test"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 5
+    targetCPUUtilizationPercentage: 80
+
+servingShadow:
+  image:
+    repository: fraud-serving
+    tag: latest
+  replicas: 1
+  ports:
+    http: 8000 # Container port
+  servicePort: 8001
+  env:
+    MODEL_NAME: fraud_detection_model
+  resources:
+    limits:
+      cpu: 300m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 2
+    targetCPUUtilizationPercentage: 80
+
+featureProcessor:
+  image:
+    repository: feature-processor
+    tag: latest
+  env:
+    KAFKA_TOPIC: transaction_stream
+    MINIO_ENDPOINT: "fraud-stack-fraud-detection-system-minio:9000"
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# ============================================================================
+# MLOPS AUTOMATION (Airflow)
+# ============================================================================
+airflow:
+  image: # Used for webserver, scheduler, init
+    repository: airflow-custom
+    tag: v9
+  postgres:
+    image:
+      repository: postgres
+      tag: 15-alpine
+    env:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    persistence:
+      enabled: true
+      size: 1Gi
+  env:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    MINIO_ENDPOINT: "fraud-stack-fraud-detection-system-minio:9000"

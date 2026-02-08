@@ -1,0 +1,196 @@
+# Kafka Consumer - Kubernetes Deployment
+# ======================================
+# Consumes transactions from Kafka and sends to fraud-api
+# This creates a real streaming pipeline: producer -> kafka -> consumer -> fraud-api
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-consumer
+  namespace: fraud-detection
+  labels:
+    app: kafka-consumer
+    component: data-pipeline
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app: kafka-consumer
+  template:
+    metadata:
+      labels:
+        app: kafka-consumer
+        component: data-pipeline
+    spec:
+      initContainers:
+        - name: wait-for-kafka
+          image: busybox
+          command: ['sh', '-c', 'until nc -z kafka 9092; do echo waiting for kafka; sleep 5; done; sleep 10']
+      
+      containers:
+        - name: consumer
+          image: python:3.11-slim
+          command:
+            - /bin/sh
+            - -c
+            - |
+              pip install kafka-python requests redis > /dev/null 2>&1
+              python -u /app/consumer.py
+          
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "kafka:9092"
+            - name: KAFKA_TOPIC
+              value: "transactions"
+            - name: FRAUD_API_URL
+              value: "http://fraud-api:8000"
+          
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "128Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          
+          volumeMounts:
+            - name: consumer-script
+              mountPath: /app
+      
+      volumes:
+        - name: consumer-script
+          configMap:
+            name: kafka-consumer-script
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-consumer-script
+  namespace: fraud-detection
+data:
+  consumer.py: |
+    import os
+    import json
+    import time
+    from datetime import datetime, timedelta
+    from collections import defaultdict
+    import redis
+    from kafka import KafkaConsumer
+    import requests
+    
+    # Configuration
+    KAFKA_BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'kafka:9092')
+    KAFKA_TOPIC = os.getenv('KAFKA_TOPIC', 'transactions')
+    REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
+    REDIS_PORT = os.getenv('REDIS_SERVICE_PORT', '6379')
+    if 'tcp://' in str(REDIS_PORT):
+        REDIS_PORT = '6379'
+    REDIS_PORT = int(REDIS_PORT)
+    FRAUD_API_URL = os.getenv('FRAUD_API_URL', 'http://fraud-api:8000')
+    
+    # Windows for aggregation
+    WINDOW_10M = timedelta(minutes=10)
+    WINDOW_1H = timedelta(hours=1)
+    
+    class SlidingWindowState:
+        def __init__(self):
+            self.history = []
+        
+        def add(self, amount, timestamp):
+            self.history.append({'amount': amount, 'ts': timestamp})
+            # Prune > 1h
+            cutoff = datetime.now() - WINDOW_1H
+            self.history = [x for x in self.history if x['ts'] > cutoff]
+            
+        def get_stats(self):
+            now = datetime.now()
+            txns_1h = self.history
+            txns_10m = [x for x in self.history if now - x['ts'] <= WINDOW_10M]
+            
+            count_1h = len(txns_1h)
+            count_10m = len(txns_10m)
+            
+            # Velocity Score: ratio of short-term vs long-term frequency
+            # If 10m frequency > 1h average frequency, score is higher
+            avg_1h_freq = count_1h / 6.0 # transactions per 10m average in last hour
+            velocity = count_10m / max(avg_1h_freq, 0.1)
+            
+            return {
+                'transaction_count_1h': count_1h,
+                'transaction_count_10m': count_10m,
+                'transaction_count_24h': count_1h * 4, # extrapolation for demo
+                'transaction_count_30d': count_1h * 10, # extrapolation for demo
+                'total_amount_1h': sum(x['amount'] for x in txns_1h),
+                'avg_amount_30d': sum(x['amount'] for x in txns_1h) / count_1h if count_1h else 0,
+                'std_amount_30d': 100.0,
+                'velocity_score': round(velocity, 2)
+            }
+
+    def main():
+        print(f"Feature Processor (Consumer) starting...", flush=True)
+
+        try:
+            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+            r.ping()
+            print(f"Redis connected at {REDIS_HOST}", flush=True)
+
+        except Exception as e:
+            print(f"Redis connection failed: {e}", flush=True)
+
+            return
+
+        states = defaultdict(SlidingWindowState)
+        
+        print(f"Connecting to Kafka {KAFKA_BOOTSTRAP_SERVERS} topic {KAFKA_TOPIC}...", flush=True)
+
+        consumer = KafkaConsumer(
+            KAFKA_TOPIC,
+            bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS.split(','),
+            auto_offset_reset='earliest',
+            group_id='feature-processor-group-v5'
+        )
+        print(f"Consumer ready. Waiting for messages...", flush=True)
+
+        
+        for message in consumer:
+            try:
+                txn = json.loads(message.value.decode('utf-8'))
+                print(f"Received: {txn.get('transaction_id', '???')}", flush=True)
+
+                user_id = txn['user_id']
+                amount = float(txn['amount'])
+                ts_str = txn['timestamp'].replace('Z', '')
+                ts = datetime.fromisoformat(ts_str)
+                
+                # Update State
+                state = states[user_id]
+                state.add(amount, ts)
+                stats = state.get_stats()
+                
+                # Update Redis
+                redis_key = f"fraud_detection:user_realtime_features:{user_id}"
+                r.hset(redis_key, mapping=stats)
+                r.expire(redis_key, 3600)
+                
+                # Forward to API
+                pred_payload = {
+                    "transaction_id": txn['transaction_id'],
+                    "user_id": txn['user_id'],
+                    "amount": txn['amount'],
+                    "merchant_id": txn.get('merchant_id', 'unknown'),
+                    "merchant_category": txn.get('merchant_category', 'grocery_stores'),
+                    "timestamp": txn['timestamp']
+                }
+                requests.post(f"{FRAUD_API_URL}/predict", json=pred_payload, timeout=2)
+                
+            except Exception as e:
+                print(f"Error in loop: {e}", flush=True)
+
+
+    if __name__ == "__main__":
+        main()

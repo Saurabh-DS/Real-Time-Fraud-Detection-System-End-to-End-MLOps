@@ -1,0 +1,61 @@
+# Fraud Detection API - Horizontal Pod Autoscaler
+# ================================================
+# Configures auto-scaling for the fraud-api based on resource utilization.
+
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fraud-api-hpa
+  namespace: fraud-detection
+  labels:
+    app: fraud-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fraud-api
+  
+  # Scaling bounds
+  minReplicas: 2
+  maxReplicas: 10
+  
+  # Metrics to scale on
+  metrics:
+    # CPU-based scaling
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    
+    # Memory-based scaling
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80
+  
+  # Scaling behavior
+  behavior:
+    # Scale up quickly (fraud spikes)
+    scaleUp:
+      stabilizationWindowSeconds: 30
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+        - type: Percent
+          value: 100
+          periodSeconds: 60
+      selectPolicy: Max
+    
+    # Scale down slowly (avoid premature scaling)
+    scaleDown:
+      stabilizationWindowSeconds: 300
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 120
+      selectPolicy: Min

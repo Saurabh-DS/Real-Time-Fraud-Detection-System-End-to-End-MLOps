@@ -1,0 +1,92 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monitoring-scripts
+  namespace: fraud-detection
+data:
+  check_drift.py: |
+    """
+    Simplified Drift Check for Kubernetes
+    """
+    import os
+    import sys
+    import logging
+    import redis
+    import pandas as pd
+    import numpy as np
+    from evidently.report import Report
+    from evidently.metric_preset import DataDriftPreset
+    
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    
+    REDIS_HOST = os.getenv('REDIS_HOST', 'redis')
+    REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+    
+    def get_live_data():
+        try:
+            r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+            keys = r.keys("fraud_detection:user_realtime_features:*")
+            if not keys:
+                return pd.DataFrame()
+                
+            data = []
+            # Sample max 1000 keys for performance
+            for key in keys[:1000]:
+                record = r.hgetall(key)
+                if record:
+                    # Convert numeric
+                    for k, v in record.items():
+                        try:
+                            record[k] = float(v)
+                        except:
+                            pass
+                    data.append(record)
+            return pd.DataFrame(data)
+        except Exception as e:
+            logger.error(f"Redis error: {e}")
+            return pd.DataFrame()
+            
+    def generate_reference():
+        # Synthetic reference based on "Normal" producer behavior
+        np.random.seed(42)
+        n = 1000
+        return pd.DataFrame({
+            'amount': np.random.uniform(10, 500, n),
+            'hour_of_day': np.random.randint(0, 24, n)
+        })
+
+    def main():
+        logger.info("Starting Drift Check...")
+        current = get_live_data()
+        
+        if current.empty:
+            logger.warning("No live data found. Skipping check.")
+            sys.exit(0)
+            
+        # Ensure 'amount' column exists
+        if 'amount' not in current.columns:
+            logger.warning("'amount' column missing in live data.")
+            sys.exit(0)
+            
+        reference = generate_reference()
+        
+        # Check drift on 'amount' specifically (since Drift Mode targets it)
+        report = Report(metrics=[DataDriftPreset()])
+        report.run(reference_data=reference, current_data=current)
+        
+        results = report.as_dict()
+        drift_detected = results['metrics'][0]['result']['dataset_drift']
+        
+        if drift_detected:
+            logger.error("DATA DRIFT DETECTED! Triggering Retraining...")
+
+            sys.exit(1) # Fail task to trigger next step
+        else:
+            logger.info("Data is stable.")
+
+            sys.exit(0)
+
+    if __name__ == "__main__":
+        main()

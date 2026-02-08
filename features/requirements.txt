@@ -1,0 +1,20 @@
+# Feature Store Dependencies
+# ===========================
+# Feature Store Framework
+feast==0.44.0
+
+# Online Store
+redis==5.2.0
+
+# Streaming
+kafka-python==2.0.2
+
+# Data Processing
+pandas==2.2.3
+pyarrow==17.0.0
+
+# HTTP Client (for prediction API calls)
+requests==2.32.3
+
+# Offline Store Storage
+minio==7.2.12

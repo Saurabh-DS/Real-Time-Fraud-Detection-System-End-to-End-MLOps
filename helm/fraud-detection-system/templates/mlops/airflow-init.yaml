@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-airflow-init
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+    component: airflow-init
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+spec:
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-airflow-init
+    spec:
+      nodeSelector:
+        node-type: app
+      restartPolicy: OnFailure
+      containers:
+        - name: airflow-init
+          image: "{{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://{{ .Values.airflow.postgres.env.POSTGRES_USER }}:{{ .Values.airflow.postgres.env.POSTGRES_PASSWORD }}@{{ include "fraud-detection-system.fullname" . }}-airflow-postgres:5432/{{ .Values.airflow.postgres.env.POSTGRES_DB }}"
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: "{{ .Values.airflow.env.AIRFLOW__CORE__EXECUTOR }}"
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              airflow db init && \
+              airflow users create \
+              --username admin \
+              --password admin \
+              --firstname Admin \
+              --lastname User \
+              --role Admin \
+              --email admin@example.com || true

@@ -1,0 +1,42 @@
+# Kubernetes Namespace for Fraud Detection System
+# ================================================
+# Isolation for security and resource quotas.
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: fraud-detection
+  labels:
+    app.kubernetes.io/name: fraud-detection
+    app.kubernetes.io/part-of: fraud-detection-system
+    environment: development
+---
+# ResourceQuota to prevent runaway resource usage
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: fraud-detection-quota
+  namespace: fraud-detection
+spec:
+  hard:
+    requests.cpu: "8"
+    requests.memory: 12Gi
+    limits.cpu: "10"
+    limits.memory: 14Gi
+    pods: "20"
+---
+# LimitRange for default container limits
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: fraud-detection-limits
+  namespace: fraud-detection
+spec:
+  limits:
+    - default:
+        cpu: "500m"
+        memory: "512Mi"
+      defaultRequest:
+        cpu: "100m"
+        memory: "128Mi"
+      type: Container

@@ -1,0 +1,51 @@
+# Prometheus Configuration for Fraud Detection System
+# Why Prometheus? Pull-based metrics for reliability, native Kubernetes support
+# Enterprise equivalent: Datadog, New Relic APM
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+# Alerting rules (can be extended for PagerDuty/Slack integration)
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+rule_files: []
+
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Model Serving API metrics
+  # Tracks: prediction latency, request count, fraud rate
+  - job_name: 'fraud-serving'
+    static_configs:
+      - targets: ['fraud-serving:8000']
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # Shadow Model API metrics (V2 Candidate)
+  - job_name: 'fraud-serving-shadow'
+    static_configs:
+      - targets: ['fraud-serving-shadow:8000']
+    metrics_path: /metrics
+    scrape_interval: 10s
+    scrape_timeout: 5s
+
+  # NOTE: Kafka and Redis don't expose HTTP metrics by default
+  # To enable Kafka metrics, use kafka-exporter (separate container)
+  # To enable Redis metrics, use redis-exporter (separate container)
+  # These are commented out to avoid protocol mismatch errors
+  
+  # - job_name: 'kafka'
+  #   static_configs:
+  #     - targets: ['kafka-exporter:9308']
+  
+  # - job_name: 'redis'
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']

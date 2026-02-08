@@ -1,0 +1,135 @@
+# Airflow DAGs ConfigMap
+# ======================
+# Contains retraining and drift monitoring DAGs
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-dags
+  namespace: fraud-detection
+data:
+  .airflowignore: |
+    ..data
+    ..2026*
+  retraining_dag.py: |
+    """
+    Fraud Detection Model Retraining DAG
+    Triggered by Drift Check or Schedule.
+    """
+    from datetime import datetime, timedelta
+    from airflow import DAG
+    from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+    from kubernetes.client import models as k8s
+    
+    default_args = {
+        'owner': 'mlops',
+        'depends_on_past': False,
+        'retries': 1,
+        'retry_delay': timedelta(minutes=5),
+    }
+    
+    with DAG(
+        'fraud_model_retraining',
+        default_args=default_args,
+        schedule_interval='0 2 * * 0',  # Weekly
+        start_date=datetime(2026, 1, 1),
+        catchup=False,
+        tags=['mlops', 'fraud-detection'],
+    ) as dag:
+        
+        retrain_task = KubernetesPodOperator(
+            task_id='xgboost_retraining',
+            name='fraud-retraining',
+            namespace='fraud-detection',
+            image='python:3.9-slim',
+            cmds=["/bin/sh", "-c"],
+            # Install deps (including MLflow/XGBoost) and run script
+            arguments=[
+                "pip install pandas numpy xgboost mlflow scikit-learn boto3 && python /app/train.py"
+            ],
+            env_vars={
+                'MLFLOW_TRACKING_URI': 'http://mlflow:5000',
+                'MLFLOW_S3_ENDPOINT_URL': 'http://minio:9000',
+                'AWS_ACCESS_KEY_ID': 'minioadmin',
+                'AWS_SECRET_ACCESS_KEY': 'minioadmin',
+            },
+            volume_mounts=[
+                k8s.V1VolumeMount(name='train-script', mount_path='/app')
+            ],
+            volumes=[
+                k8s.V1Volume(
+                    name='train-script',
+                    config_map=k8s.V1ConfigMapVolumeSource(name='training-scripts')
+                )
+            ],
+            is_delete_operator_pod=True,
+            get_logs=True,
+            # Resource limits for training
+            container_resources=k8s.V1ResourceRequirements(
+                requests={"cpu": "500m", "memory": "512Mi"},
+                limits={"cpu": "1000m", "memory": "1Gi"}
+            )
+        )
+  
+  drift_monitoring_dag.py: |
+    """
+    Drift Monitoring DAG
+    Runs hourly. Triggers Retraining if drift detected.
+    """
+    from datetime import datetime, timedelta
+    from airflow import DAG
+    from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
+    from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+    from kubernetes.client import models as k8s
+    
+    default_args = {
+        'owner': 'mlops',
+        'depends_on_past': False,
+        'retries': 0, # Fail immediately on drift to trigger handler
+    }
+    
+    with DAG(
+        'drift_monitoring',
+        default_args=default_args,
+        schedule_interval='@hourly',
+        start_date=datetime(2026, 1, 1),
+        catchup=False,
+        tags=['mlops', 'monitoring'],
+    ) as dag:
+        
+        # 1. Run Drift Check in a separate Pod
+        check_drift = KubernetesPodOperator(
+            task_id='check_drift_job',
+            name='drift-check',
+            namespace='fraud-detection',
+            image='python:3.9-slim',
+            cmds=["/bin/sh", "-c"],
+            # Install deps and run script
+            arguments=[
+                "pip install evidently redis pandas numpy && python /app/check_drift.py"
+            ],
+            env_vars={
+                'REDIS_HOST': 'redis',
+                'REDIS_PORT': '6379'
+            },
+            volume_mounts=[
+                k8s.V1VolumeMount(name='script-vol', mount_path='/app')
+            ],
+            volumes=[
+                k8s.V1Volume(
+                    name='script-vol',
+                    config_map=k8s.V1ConfigMapVolumeSource(name='monitoring-scripts')
+                )
+            ],
+            is_delete_operator_pod=True,
+            get_logs=True,
+        )
+        
+        # 2. Trigger Retraining if Drift Detected (Exit Code 1)
+        trigger_retrain = TriggerDagRunOperator(
+            task_id='trigger_retraining',
+            trigger_dag_id='fraud_model_retraining',
+            trigger_rule='all_failed' # Only run if check_drift "fails" (detects drift)
+        )
+        
+        check_drift >> trigger_retrain

@@ -1,0 +1,15 @@
+# Monitoring & Drift Detection Dependencies
+# ==========================================
+# Drift Detection
+evidently==0.4.33
+
+# Data Processing
+pandas==2.2.3
+numpy==1.26.4
+pyarrow==17.0.0
+
+# ML Utilities
+scikit-learn==1.5.2
+
+# Feature Store Connection
+redis==5.2.0

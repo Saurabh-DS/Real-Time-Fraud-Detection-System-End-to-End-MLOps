@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-airflow-webserver
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-airflow-webserver
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-airflow-webserver
+    spec:
+      nodeSelector:
+        node-type: app
+      containers:
+        - name: airflow-webserver
+          image: "{{ .Values.airflow.image.repository }}:{{ .Values.airflow.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://{{ .Values.airflow.postgres.env.POSTGRES_USER }}:{{ .Values.airflow.postgres.env.POSTGRES_PASSWORD }}@{{ include "fraud-detection-system.fullname" . }}-airflow-postgres:5432/{{ .Values.airflow.postgres.env.POSTGRES_DB }}"
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: "{{ .Values.airflow.env.AIRFLOW__CORE__EXECUTOR }}"
+            - name: AIRFLOW__CORE__FERNET_KEY
+              value: "{{ .Values.airflow.env.AIRFLOW__CORE__FERNET_KEY }}"
+            - name: AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION
+              value: "{{ .Values.airflow.env.AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION }}"
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "{{ .Values.airflow.env.AIRFLOW__CORE__LOAD_EXAMPLES }}"
+            - name: AIRFLOW__WEBSERVER__EXPOSE_CONFIG
+              value: "{{ .Values.airflow.env.AIRFLOW__WEBSERVER__EXPOSE_CONFIG }}"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://{{ include "fraud-detection-system.fullname" . }}-mlflow:5000"
+            - name: MINIO_ENDPOINT
+              value: "{{ include "fraud-detection-system.fullname" . }}-minio:9000"
+            - name: MINIO_ACCESS_KEY
+              value: "{{ .Values.minio.env.MINIO_ROOT_USER }}"
+            - name: MINIO_SECRET_KEY
+              value: "{{ .Values.minio.env.MINIO_ROOT_PASSWORD }}"
+          command: ["airflow", "webserver"]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-airflow-webserver
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: webserver
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-airflow-webserver

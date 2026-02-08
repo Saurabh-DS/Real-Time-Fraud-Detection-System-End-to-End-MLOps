@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-zookeeper
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-zookeeper
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-zookeeper
+    spec:
+      nodeSelector:
+        node-type: infra
+      containers:
+        - name: zookeeper
+          image: "{{ .Values.zookeeper.image.repository }}:{{ .Values.zookeeper.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.zookeeper.ports.client }}
+          env:
+            - name: ZOOKEEPER_CLIENT_PORT
+              value: "{{ .Values.zookeeper.env.ZOOKEEPER_CLIENT_PORT }}"
+            - name: ZOOKEEPER_TICK_TIME
+              value: "{{ .Values.zookeeper.env.ZOOKEEPER_TICK_TIME }}"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-zookeeper
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.zookeeper.ports.client }}
+      targetPort: {{ .Values.zookeeper.ports.client }}
+      protocol: TCP
+      name: client
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-zookeeper

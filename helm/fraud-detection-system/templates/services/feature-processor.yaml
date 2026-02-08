@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-feature-processor
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-feature-processor
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-feature-processor
+    spec:
+      nodeSelector:
+        node-type: app
+      containers:
+        - name: feature-processor
+          image: "{{ .Values.featureProcessor.image.repository }}:{{ .Values.featureProcessor.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "{{ include "fraud-detection-system.fullname" . }}-kafka:9092"
+            - name: KAFKA_TOPIC
+              value: "{{ .Values.featureProcessor.env.KAFKA_TOPIC }}"
+            - name: REDIS_HOST
+              value: "{{ include "fraud-detection-system.fullname" . }}-redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: PREDICTION_API_URL
+              value: "http://{{ include "fraud-detection-system.fullname" . }}-serving:8000/predict"
+            - name: MINIO_ENDPOINT
+              value: "{{ include "fraud-detection-system.fullname" . }}-minio:9000"
+          resources:
+            {{- toYaml .Values.featureProcessor.resources | nindent 12 }}

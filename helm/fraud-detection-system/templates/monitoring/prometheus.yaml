@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-prometheus
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-prometheus
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-prometheus
+    spec:
+      nodeSelector:
+        node-type: infra
+      containers:
+        - name: prometheus
+          image: "{{ .Values.prometheus.image.repository }}:{{ .Values.prometheus.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus/prometheus.yml
+              subPath: prometheus.yml
+            - name: prometheus-data
+              mountPath: /prometheus
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "fraud-detection-system.fullname" . }}-prometheus-config
+        - name: prometheus-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-prometheus
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: 9090
+      targetPort: 9090
+      name: http
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-prometheus
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-prometheus-config
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+
+    alerting:
+      alertmanagers:
+        - static_configs:
+            - targets: []
+
+    rule_files: []
+
+    scrape_configs:
+      - job_name: 'prometheus'
+        static_configs:
+          - targets: ['localhost:9090']
+
+      - job_name: 'fraud-serving'
+        static_configs:
+          - targets: ['{{ include "fraud-detection-system.fullname" . }}-serving:8000']
+        metrics_path: /metrics
+        scrape_interval: 10s
+        scrape_timeout: 5s
+
+      - job_name: 'fraud-serving-shadow'
+        static_configs:
+          - targets: ['{{ include "fraud-detection-system.fullname" . }}-serving-shadow:8000']
+        metrics_path: /metrics
+        scrape_interval: 10s
+        scrape_timeout: 5s

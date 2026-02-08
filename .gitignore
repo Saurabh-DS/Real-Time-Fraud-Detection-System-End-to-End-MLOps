@@ -1,0 +1,111 @@
+# Real-Time Fraud Detection System
+# Python .gitignore
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# MLflow
+mlruns/
+mlartifacts/
+*.db
+
+# Data files (large files shouldn't be in git)
+*.parquet
+*.csv
+*.pkl
+*.joblib
+
+# Feature store data
+features/data/
+!features/data/.gitkeep
+
+# Model artifacts
+models/
+artifacts/
+*.xgb
+*.model
+
+# Drift reports
+monitoring/drift_reports/
+!monitoring/drift_reports/.gitkeep
+
+# Environment files
+.env
+.env.local
+
+# Docker volumes
+data/
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/
+
+# Secrets
+*.pem
+*.key
+credentials.json

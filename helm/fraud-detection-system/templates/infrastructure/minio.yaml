@@ -1,0 +1,73 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-minio
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-minio
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-minio
+    spec:
+      nodeSelector:
+        node-type: infra
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image.repository }}:{{ .Values.minio.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          ports:
+            - containerPort: {{ .Values.minio.ports.api }}
+            - containerPort: {{ .Values.minio.ports.console }}
+          env:
+            - name: MINIO_ROOT_USER
+              value: "{{ .Values.minio.env.MINIO_ROOT_USER }}"
+            - name: MINIO_ROOT_PASSWORD
+              value: "{{ .Values.minio.env.MINIO_ROOT_PASSWORD }}"
+          command: ["minio", "server", "/data", "--console-address", ":{{ .Values.minio.ports.console }}"]
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+      volumes:
+        - name: minio-data
+          {{- if .Values.minio.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "fraud-detection-system.fullname" . }}-minio-pvc
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+---
+{{- if .Values.minio.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-minio-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: {{ .Values.minio.persistence.size }}
+---
+{{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-minio
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.minio.ports.api }}
+      targetPort: {{ .Values.minio.ports.api }}
+      name: api
+    - port: {{ .Values.minio.ports.console }}
+      targetPort: {{ .Values.minio.ports.console }}
+      name: console
+  selector:
+    app: {{ include "fraud-detection-system.fullname" . }}-minio

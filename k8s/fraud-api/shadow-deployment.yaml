@@ -1,0 +1,80 @@
+# Fraud Detection API - Shadow Deployment
+# ========================================
+# Secondary model version receiving mirrored traffic for validation.
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fraud-api-shadow
+  namespace: fraud-detection
+  labels:
+    app: fraud-api
+    version: v2  # Critical: Matches fraud-api-shadow service selector
+    app.kubernetes.io/name: fraud-api
+    app.kubernetes.io/component: serving
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app: fraud-api
+      version: v2
+  template:
+    metadata:
+      labels:
+        app: fraud-api
+        version: v2
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: fraud-api
+          image: fraud-serving:v6
+          imagePullPolicy: IfNotPresent
+          
+          ports:
+            - containerPort: 8000
+              name: http
+          
+          env:
+            - name: REDIS_HOST
+              value: "redis"
+            - name: REDIS_PORT
+              value: "6379"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+            - name: MODEL_NAME
+              value: "fraud_detection_model_v2"
+            - name: MODEL_VERSION
+              value: "shadow"  # Metrics will show up as model_version="shadow"
+            - name: MLFLOW_S3_ENDPOINT_URL
+              value: "http://minio:9000"
+            - name: AWS_ACCESS_KEY_ID
+              value: "minioadmin"
+            - name: AWS_SECRET_ACCESS_KEY
+              value: "minioadmin"
+            # Disable shadow on the shadow (prevent loop)
+            - name: SHADOW_MODEL_URL
+              value: ""
+          
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3

@@ -1,0 +1,7 @@
+# Transaction Producer Dependencies
+# ==================================
+# Kafka Client
+kafka-python==2.0.2
+
+# Synthetic Data Generation
+faker==30.1.0

@@ -1,0 +1,69 @@
+# Airflow PostgreSQL - Kubernetes Deployment
+# ==========================================
+# Database backend for Airflow metadata
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-postgres
+  namespace: fraud-detection
+  labels:
+    app: airflow-postgres
+    component: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-postgres
+  template:
+    metadata:
+      labels:
+        app: airflow-postgres
+        component: airflow
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+              name: postgres
+          
+          env:
+            - name: POSTGRES_USER
+              value: "airflow"
+            - name: POSTGRES_PASSWORD
+              value: "airflow"
+            - name: POSTGRES_DB
+              value: "airflow"
+          
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data
+      
+      volumes:
+        - name: postgres-data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-postgres
+  namespace: fraud-detection
+  labels:
+    app: airflow-postgres
+spec:
+  type: ClusterIP
+  selector:
+    app: airflow-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432

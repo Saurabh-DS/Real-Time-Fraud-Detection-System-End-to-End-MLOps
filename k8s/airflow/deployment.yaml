@@ -1,0 +1,183 @@
+# Airflow Scheduler & Webserver - Kubernetes Deployment
+# =====================================================
+# Orchestrates ML pipelines and DAGs
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+  namespace: fraud-detection
+  labels:
+    app: airflow-webserver
+    component: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-webserver
+  template:
+    metadata:
+      labels:
+        app: airflow-webserver
+        component: airflow
+    spec:
+      serviceAccountName: airflow
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox
+          command: ['sh', '-c', 'until nc -z airflow-postgres 5432; do echo waiting for postgres; sleep 2; done']
+        
+        - name: init-db
+          image: apache/airflow:2.8.0
+          command: ['airflow', 'db', 'init']
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow"
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: "LocalExecutor"
+        
+        - name: create-admin
+          image: apache/airflow:2.8.0
+          command: 
+            - bash
+            - -c
+            - |
+              airflow users create \
+                --username admin \
+                --password admin \
+                --firstname Admin \
+                --lastname User \
+                --role Admin \
+                --email admin@example.com || true
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow"
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: "LocalExecutor"
+      
+      containers:
+        - name: webserver
+          image: apache/airflow:2.8.0
+          command: ['airflow', 'webserver']
+          ports:
+            - containerPort: 8080
+              name: http
+          
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow"
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: "LocalExecutor"
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+            - name: AIRFLOW__WEBSERVER__SECRET_KEY
+              value: "fraud-detection-secret-key"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+          
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            failureThreshold: 5
+          
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 15
+            failureThreshold: 5
+          
+          volumeMounts:
+            - name: dags
+              mountPath: /opt/airflow/dags
+      
+      volumes:
+        - name: dags
+          configMap:
+            name: airflow-dags
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: fraud-detection
+  labels:
+    app: airflow-scheduler
+    component: airflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: airflow-scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow-scheduler
+        component: airflow
+    spec:
+      serviceAccountName: airflow
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox
+          command: ['sh', '-c', 'until nc -z airflow-postgres 5432; do echo waiting for postgres; sleep 2; done']
+      
+      containers:
+        - name: scheduler
+          image: apache/airflow:2.8.0
+          command: ['airflow', 'scheduler']
+          
+          env:
+            - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow"
+            - name: AIRFLOW__CORE__EXECUTOR
+              value: "LocalExecutor"
+            - name: AIRFLOW__CORE__LOAD_EXAMPLES
+              value: "false"
+            - name: MLFLOW_TRACKING_URI
+              value: "http://mlflow:5000"
+          
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          
+          volumeMounts:
+            - name: dags
+              mountPath: /opt/airflow/dags
+      
+      volumes:
+        - name: dags
+          configMap:
+            name: airflow-dags
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow
+  namespace: fraud-detection
+  labels:
+    app: airflow
+spec:
+  type: NodePort
+  selector:
+    app: airflow-webserver
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30080

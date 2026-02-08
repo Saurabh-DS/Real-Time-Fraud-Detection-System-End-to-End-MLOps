@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-producer
+  labels:
+    {{- include "fraud-detection-system.labels" . | nindent 4 }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ include "fraud-detection-system.fullname" . }}-producer
+  template:
+    metadata:
+      labels:
+        app: {{ include "fraud-detection-system.fullname" . }}-producer
+    spec:
+      nodeSelector:
+        node-type: app
+      containers:
+        - name: producer
+          image: "{{ .Values.producer.image.repository }}:{{ .Values.producer.image.tag }}"
+          imagePullPolicy: {{ .Values.global.imagePullPolicy }}
+          env:
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: "{{ include "fraud-detection-system.fullname" . }}-kafka:9092"
+            - name: KAFKA_TOPIC
+              value: "{{ .Values.producer.env.KAFKA_TOPIC }}"
+            - name: TRANSACTIONS_PER_SECOND
+              value: "{{ .Values.producer.env.TRANSACTIONS_PER_SECOND }}"
+            - name: FRAUD_RATIO
+              value: "{{ .Values.producer.env.FRAUD_RATIO }}"
+          resources:
+            {{- toYaml .Values.producer.resources | nindent 12 }}
