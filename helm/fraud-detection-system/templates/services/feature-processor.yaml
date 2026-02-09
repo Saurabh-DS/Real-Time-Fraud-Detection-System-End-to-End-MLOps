@@ -5,6 +5,7 @@ metadata:
   labels:
     {{- include "fraud-detection-system.labels" . | nindent 4 }}
 spec:
+  replicas: {{ .Values.featureProcessor.replicas | default 1 }}
   selector:
     matchLabels:
       app: {{ include "fraud-detection-system.fullname" . }}-feature-processor

@@ -62,3 +62,24 @@ spec:
           type: Utilization
           averageUtilization: {{ .Values.producer.autoscaling.targetCPUUtilizationPercentage }}
 {{- end }}
+
+{{- if .Values.featureProcessor.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "fraud-detection-system.fullname" . }}-feature-processor-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "fraud-detection-system.fullname" . }}-feature-processor
+  minReplicas: {{ .Values.featureProcessor.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.featureProcessor.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.featureProcessor.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}

@@ -86,7 +86,7 @@ PREDICTION_COUNTER = Counter(
 INFERENCE_LATENCY = Histogram(
     'inference_latency_seconds',
     'Time spent on inference',
-    buckets=[0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
+    buckets=[0.0005, 0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0]
 )
 
 FEATURE_FETCH_LATENCY = Histogram(

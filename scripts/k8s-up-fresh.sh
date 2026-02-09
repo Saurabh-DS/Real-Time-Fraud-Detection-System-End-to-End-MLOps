@@ -13,11 +13,18 @@ docker system prune -f
 
 # 2. Cluster Creation
 echo -e "\033[0;36m-> Creating fresh Kind cluster (3-Nodes)...\033[0m"
-kind create cluster --config kind-config.yaml --wait 60s
+kind create cluster --config kind-config.yaml --image kindest/node:v1.31.1 --wait 60s
 
 # 3. Build & Load Images
 echo -e "\033[0;36m-> Building and loading images...\033[0m"
 docker-compose build
+
+echo -e "\033[0;36m-> Tagging images for Kubernetes...\033[0m"
+docker tag real-time-fraud-detection-system-end-to-end-mlops-producer:latest fraud-producer:v3
+docker tag real-time-fraud-detection-system-end-to-end-mlops-feature-processor:latest feature-processor:latest
+docker tag real-time-fraud-detection-system-end-to-end-mlops-serving:latest fraud-serving:latest
+docker tag real-time-fraud-detection-system-end-to-end-mlops-airflow-webserver:latest airflow-custom:v9
+
 IMAGES=("fraud-producer:v3" "feature-processor:latest" "fraud-serving:latest" "airflow-custom:v9")
 for img in "${IMAGES[@]}"; do
     kind load docker-image "$img" --name fraud-detection

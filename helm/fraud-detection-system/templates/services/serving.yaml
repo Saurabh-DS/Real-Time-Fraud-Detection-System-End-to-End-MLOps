@@ -5,7 +5,9 @@ metadata:
   labels:
     {{- include "fraud-detection-system.labels" . | nindent 4 }}
 spec:
+{{- if not .Values.serving.autoscaling.enabled }}
   replicas: {{ .Values.serving.replicas }}
+{{- end }}
   selector:
     matchLabels:
       app: {{ include "fraud-detection-system.fullname" . }}-serving
@@ -14,8 +16,7 @@ spec:
       labels:
         app: {{ include "fraud-detection-system.fullname" . }}-serving
     spec:
-      nodeSelector:
-        node-type: app
+
       containers:
         - name: serving
           image: "{{ .Values.serving.image.repository }}:{{ .Values.serving.image.tag }}"

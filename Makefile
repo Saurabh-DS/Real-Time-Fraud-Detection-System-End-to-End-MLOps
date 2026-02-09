@@ -94,7 +94,7 @@ up: cluster-create cluster-setup deploy
 # Create Kind cluster
 cluster-create:
 	@echo "Creating Kind cluster..."
-	kind create cluster --config kind-config.yaml --wait 60s
+	kind create cluster --config kind-config.yaml --image kindest/node:v1.31.1 --wait 60s
 	@echo "Cluster created"
 
 # Setup cluster prerequisites

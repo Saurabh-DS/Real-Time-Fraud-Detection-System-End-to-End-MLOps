@@ -1,18 +1,31 @@
-# Docker Slate Wipe Script - PowerShell
-# ====================================
-# Stops all containers and removes all images, volumes, networks, and cache.
+# Project-Specific Docker Cleanup Script - PowerShell
+# ====================================================
+# Stops and removes containers, networks, volumes, and images 
+# associated with the docker-compose.yaml in this project ONLY.
 
-Write-Host "Wiping the Docker slate clean..." -ForegroundColor Cyan
+$ErrorActionPreference = "Stop"
 
-# Stop all running containers
-$runningContainers = docker ps -q
-if ($runningContainers) {
-    Write-Host "Stopping running containers..."
-    docker stop $runningContainers
+# Get the project root directory (assuming script is in /scripts)
+$scriptPath = $MyInvocation.MyCommand.Path
+$projectRoot = Join-Path (Split-Path $scriptPath -Parent) ".."
+$composeFile = Join-Path $projectRoot "docker-compose.yaml"
+
+Write-Host "Cleaning Docker resources for project in: $projectRoot" -ForegroundColor Cyan
+
+# Check if docker-compose.yaml exists
+if (-not (Test-Path $composeFile)) {
+    Write-Error "docker-compose.yaml not found at $composeFile. Is the script in the /scripts folder?"
 }
 
-# Remove all containers, images, volumes, networks, and build cache
-Write-Host "Clearing all Docker resources (Containers, Images, Volumes, Networks, Cache)..."
-docker system prune -a --volumes -f
-
-Write-Host "Docker slate wiped clean!" -ForegroundColor Green
+# Run docker compose down
+Write-Host "Running docker compose down..."
+try {
+    # --volumes: Remove named volumes declared in the `volumes` section of the Compose file and anonymous volumes attached to containers.
+    # --rmi all: Remove all images used by any service.
+    # --remove-orphans: Remove containers for services not defined in the Compose file.
+    docker compose -f $composeFile down --volumes --rmi all --remove-orphans
+    Write-Host "Project Docker resources cleaned successfully!" -ForegroundColor Green
+}
+catch {
+    Write-Error "Failed to clean Docker resources: $_"
+}

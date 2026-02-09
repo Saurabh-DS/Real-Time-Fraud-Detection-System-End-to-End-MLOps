@@ -16,11 +16,18 @@ try {
     
     # 2. Cluster Creation
     Write-Step "Creating fresh Kind cluster (3-Nodes)..."
-    kind create cluster --config kind-config.yaml --wait 60s
+    kind create cluster --config kind-config.yaml --image kindest/node:v1.31.1 --wait 60s
 
     # 3. Build & Load Images
     Write-Step "Building and loading images..."
     docker-compose build
+    
+    Write-Step "Tagging images for Kubernetes..."
+    docker tag real-time-fraud-detection-system-end-to-end-mlops-producer:latest fraud-producer:v3
+    docker tag real-time-fraud-detection-system-end-to-end-mlops-feature-processor:latest feature-processor:latest
+    docker tag real-time-fraud-detection-system-end-to-end-mlops-serving:latest fraud-serving:latest
+    docker tag real-time-fraud-detection-system-end-to-end-mlops-airflow-webserver:latest airflow-custom:v9
+
     $images = @("fraud-producer:v3", "feature-processor:latest", "fraud-serving:latest", "airflow-custom:v9")
     foreach ($img in $images) {
         kind load docker-image $img --name fraud-detection
