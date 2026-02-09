@@ -27,6 +27,7 @@ This repository implements a production-grade **Real-Time Fraud Detection Engine
 *   **Automated MLOps Pipeline**: End-to-end retraining orchestrated by Apache Airflow, triggered by automated drift detection (Evidently AI).
 *   **Enterprise Observability**: Integrated Prometheus and Grafana dashboards for monitoring business metrics, model performance, and system health.
 *   **Production Deployment**: Fully containerized architecture with support for both Docker Compose and Kubernetes (Helm).
+*   **Scalable Architecture**: Horizontal Pod Autoscaling (HPA) configured for high-throughput (1000+ TPS) workloads.
 
 ---
 
@@ -103,6 +104,7 @@ graph TD
 | **Tracking** | MLflow | Experiment tracking and central model registry |
 | **Artifacts** | MinIO (S3) | Persistent storage for model binaries and parquet data |
 | **Observability** | Prometheus / Grafana | System health and business performance dashboards |
+| **Scaling** | Kubernetes HPA | CPU-based auto-scaling (1-8 replicas) |
 
 ---
 
@@ -131,6 +133,7 @@ To simulate a production environment with auto-scaling and high availability:
 ```bash
 ./scripts/k8s-up-fresh.sh            # Create Kind cluster and install Helm charts
 ./scripts/k8s-up-fast.sh             # Resume existing cluster with latest config
+./scripts/k8s-autoscale-demo.sh      # Run autoscaling demo (1000 TPS load)
 ./scripts/k8s-down.sh                # Uninstall stack and cleanup cluster
 ```
 
